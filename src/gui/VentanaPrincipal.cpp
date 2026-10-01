@@ -88,10 +88,15 @@ void VentanaPrincipal::iniciarResolucion(const QString& expresion, double a, dou
     }
     auto parseado = parsearFuncion(expresion.toStdString());
     if (!parseado) {
+        // El mensaje del parser cita el carácter que el usuario escribió, así
+        // que hay que escaparlo antes de inyectarlo en el HTML del panel.
+        const QString detalle =
+            PanelProcedimiento::escaparHtml(QString::fromStdString(parseado.error().mensaje));
         procedimiento_->mostrarInformacion(
             QStringLiteral("<h3>Error de análisis</h3><p><b>%1</b></p>"
                            "<p>Revise la expresión f(x) e inténtelo de nuevo.</p>")
-                .arg(QString::fromStdString(parseado.error().mensaje)));
+                .arg(detalle));
+        statusBar()->showMessage(tr("La expresión f(x) no se pudo analizar."));
         return;
     }
 
@@ -128,10 +133,15 @@ void VentanaPrincipal::iniciarResolucion(const QString& expresion, double a, dou
 }
 
 void VentanaPrincipal::cancelarResolucion() {
-    if (hiloCalculo_.joinable()) {
+    if (calculando_ && hiloCalculo_.joinable()) {
         hiloCalculo_.request_stop();
+        statusBar()->showMessage(tr("Cancelando el cálculo…"));
+        return;
     }
-    statusBar()->showMessage(tr("Cancelando el cálculo…"));
+    // No había nada en curso: devolver los controles a su estado normal para
+    // que la interfaz nunca pueda quedar bloqueada sin salida.
+    panelEntrada_->habilitarEjecucion(true);
+    statusBar()->showMessage(tr("No hay ningún cálculo en curso."));
 }
 
 void VentanaPrincipal::aplicarResultado(const std::shared_ptr<Resultado>& resultado,
