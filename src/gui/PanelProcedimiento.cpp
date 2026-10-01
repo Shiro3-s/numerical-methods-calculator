@@ -44,19 +44,23 @@ void PanelProcedimiento::mostrarIteracion(const Iteracion& iteracion,
 
     // Paso 1 — Verificación inicial.
     const double productoInicial = iteracion.fa * iteracion.fb;
+    const QString relacion =
+        (productoInicial < 0.0)  ? QStringLiteral("&lt;")
+        : (productoInicial > 0.0) ? QStringLiteral("&gt;")
+                                   : QStringLiteral("=");
+    const QString conclusion =
+        (productoInicial < 0.0)  ? tr("existe al menos una raíz en [a, b].")
+        : (productoInicial > 0.0) ? tr("no se garantiza la existencia de una raíz.")
+                                  : tr("la raíz es exacta y cae en un extremo de [a, b].");
     html += QStringLiteral(
                 "<p><b>Paso 1 · Verificación inicial.</b><br>"
                 "f(a) = f(%1) = %2<br>"
                 "f(b) = f(%3) = %4<br>"
                 "f(a)\u00b7f(b) = %5 %6 0 → %7</p>")
-                .arg(A, fa, B, fb,
-                     aTexto(productoInicial, cifras),
-                     productoInicial < 0.0 ? QStringLiteral("&lt;") : QStringLiteral("&gt;="),
-                     productoInicial < 0.0
-                         ? QStringLiteral("existe al menos una raíz en [a, b].")
-                         : QStringLiteral("no se garantiza la existencia de una raíz."));
-    // El algoritmo solo se ejecuta si la verificación fue satisfactoria.
-    if (productoInicial >= 0.0) {
+                .arg(A, fa, B, fb, aTexto(productoInicial, cifras), relacion, conclusion);
+    // El algoritmo solo se ejecuta si la verificación fue satisfactoria. Un
+    // producto exactamente nulo no impide continuar: la raíz ya está localizada.
+    if (productoInicial > 0.0) {
         html += QStringLiteral("<p><i>El método no puede continuar en este intervalo.</i></p>");
         setHtml(html);
         return;

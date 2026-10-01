@@ -158,10 +158,12 @@ void PanelEntrada::modoResolver() {
     if (resolviendo_) {
         return;
     }
+    // La conexión es directa: VentanaPrincipal::iniciarResolucion bloquea los
+    // controles SOLO si el cálculo arranca. Deshabilitarlos aquí dejaría la
+    // interfaz bloqueada para siempre cuando la expresión no se puede analizar.
     Q_EMIT resolverSolicitado(campoFuncion_->text().trimmed(),
                               spinA_->value(), spinB_->value(),
                               spinCifras_->value());
-    habilitarEjecucion(false);
 }
 
 void PanelEntrada::modoCancelar() {

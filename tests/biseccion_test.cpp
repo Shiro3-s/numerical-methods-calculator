@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------------
 #include <cmath>
 #include <format>
+#include <limits>
 #include <print>
 #include <string>
 
@@ -111,6 +112,82 @@ int main() {
     comprobar(formatearParaCifras(0.7390851332151607, 6) == "0.739085", "formato 6 cifras");
     comprobar(formatearParaCifras(12345.678, 6) == "12345.7", "formato 12345.678 n=6");
     comprobar(formatearParaCifras(1000.0, 4) == "1000", "formato 1000 n=4 sin basura");
+
+    // ---------- Regresión: raíces en los extremos del intervalo ----------
+    // f(x) = x en [0, 1]: la raíz es exactamente a. Antes se reportaba
+    // SinCambioDeSigno porque f(a)·f(b) == 0 no es < 0.
+    {
+        Biseccion biseccion([](double x) { return x; });
+        const auto resultado = biseccion.resolver(0.0, 1.0, 1e-6, 100);
+        comprobar(resultado.has_value(), "raíz exacta en el extremo a debe resolverse");
+        if (resultado) {
+            comprobar(resultado->motivo == MotivoParada::RaizExacta,
+                      "el extremo debe reportarse como RaizExacta");
+            comprobar(resultado->raiz() == 0.0, "la raíz debe ser exactamente a = 0");
+            comprobar(resultado->iteracionesUsadas() == 1,
+                      "una raíz en el extremo no debe iterar");
+        }
+    }
+    // f(x) = x − 3 en [0, 3]: la raíz es exactamente b.
+    {
+        Biseccion biseccion([](double x) { return x - 3.0; });
+        const auto resultado = biseccion.resolver(0.0, 3.0, 1e-6, 100);
+        comprobar(resultado.has_value(), "raíz exacta en el extremo b debe resolverse");
+        if (resultado) {
+            comprobar(resultado->motivo == MotivoParada::RaizExacta,
+                      "el extremo debe reportarse como RaizExacta");
+            comprobar(resultado->raiz() == 3.0, "la raíz debe ser exactamente b = 3");
+        }
+    }
+    // Raíz interior: f(x) = x − 2 sobre [0, 3] sí debe iterar normalmente.
+    {
+        Biseccion biseccion([](double x) { return x - 2.0; });
+        const auto resultado = biseccion.resolver(0.0, 3.0, 1e-6, 100);
+        comprobar(resultado.has_value(), "raíz interior debe resolverse");
+        if (resultado) {
+            comprobar(std::fabs(resultado->raiz() - 2.0) < 1e-5,
+                      std::format("raíz interior: {} ≈ 2", resultado->raiz()));
+        }
+    }
+
+    // ---------- Regresión: subnormales no deben fingir una raíz exacta ----
+    // Con f(x) = 1e-300·(x − 0.3) el producto f(a)·f(m) cae a cero por
+    // desvanecimiento. El algoritmo antiguo leía ese 0 como «raíz exacta» en
+    // m = 0.5 (falso): la raíz real está en 0.3.
+    {
+        Biseccion biseccion([](double x) { return 1e-300 * (x - 0.3); });
+        const auto resultado = biseccion.resolver(0.0, 1.0, 1e-6, 200);
+        comprobar(resultado.has_value(),
+                  "no debe descartar la iteración por subnormal");
+        if (resultado) {
+            comprobar(resultado->motivo != MotivoParada::RaizExacta,
+                      "no debe reportar raíz exacta falsa por subnormal");
+            comprobar(std::fabs(resultado->raiz() - 0.3) < 1e-5,
+                      std::format("raíz con f diminuta: {} ≈ 0.3", resultado->raiz()));
+        }
+    }
+    // Un producto desvanecido a 0 con ambos extremos del mismo signo tampoco
+    // debe pasar por «cambio de signo».
+    {
+        Biseccion biseccion([](double x) { return 1e-300 * (x + 1.0); });
+        const auto resultado = biseccion.resolver(0.0, 1.0, 1e-6, 100);
+        comprobar(!resultado.has_value(),
+                  "mismo signo con producto desvanecido → SinCambioDeSigno");
+    }
+
+    // ---------- Regresión: iteracionesParaCifras con a == b -------------
+    // log2(0) es −inf y convertirlo a int sería comportamiento indefinido.
+    comprobar(Biseccion::iteracionesParaCifras(5.0, 5.0, 6) == 0,
+              "intervalo degenerado a == b debe dar 0 iteraciones");
+    comprobar(Biseccion::iteracionesParaCifras(0.0, 1e-9, 6) == 0,
+              "intervalo ya por debajo de la tolerancia debe dar 0 iteraciones");
+
+    // ---------- Regresión: formato de valores no finitos ------------------
+    // log10(NaN) convertido a int es indefinido; el formateo debe sobrevivir.
+    comprobar(decimalesParaCifras(std::numeric_limits<double>::quiet_NaN(), 6) == 5,
+              "decimales de NaN cae al valor por defecto");
+    comprobar(decimalesParaCifras(std::numeric_limits<double>::infinity(), 6) == 5,
+              "decimales de infinity cae al valor por defecto");
 
     std::println("biseccion_test: {} fallos", fallos);
     return fallos == 0 ? 0 : 1;

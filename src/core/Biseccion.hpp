@@ -28,7 +28,7 @@ enum class MotivoParada {
 };
 
 enum class ErrorBiseccion {
-    SinCambioDeSigno,      // f(a)·f(b) >= 0 → no se garantiza una raíz en [a, b]
+    SinCambioDeSigno,      // f(a) y f(b) no tienen signo opuesto → sin raíz garantizada
 };
 
 struct Iteracion {
@@ -65,6 +65,9 @@ public:
 
     // Criterio absoluto: iteraciones garantizadas para 'n' cifras exactas.
     //  (b - a)/2^k <= 0.5·10^(-n)  →  k = ceil(log2((b-a)/(0.5·10^(-n))))
+    // Devuelve 0 si el intervalo ya es más estrecho que la tolerancia (o si
+    // a == b) y está acotado a 10 000 para que un intervalo patológico no
+    // derive un bucle interminable en la GUI.
     [[nodiscard]] static int iteracionesParaCifras(double a, double b, int n);
 
 private:

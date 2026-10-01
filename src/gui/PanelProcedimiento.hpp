@@ -28,9 +28,13 @@ public:
     // Mensaje informativo (o de error).
     void mostrarInformacion(const QString& html);
 
+    // Escapa '&', '<' y '>' para interpolar texto de usuario dentro del HTML
+    // que muestra este panel. Compartido: el mensaje de error del parser también
+    // cita caracteres tecleados por el usuario.
+    [[nodiscard]] static QString escaparHtml(QString texto);
+
 private:
     static QString aTexto(double valor, int cifras);
-    static QString escaparHtml(QString texto);
 };
 
 }  // namespace biseccion

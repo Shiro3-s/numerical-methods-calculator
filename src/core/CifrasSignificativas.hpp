@@ -16,6 +16,8 @@ namespace biseccion {
 
 // Devuelve la cantidad de decimales con la que debe presentarse 'valor' para
 // mostrar exactamente 'n' cifras significativas (evita la basura decimal).
+// El resultado está acotado a [0, 20] para no generar celdas ilegibles, y los
+// valores no finitos caen en el comportamiento de 'valor == 0'.
 [[nodiscard]] int decimalesParaCifras(double valor, int n);
 
 // Formatea 'valor' con los decimales justos para 'n' cifras significativas.
