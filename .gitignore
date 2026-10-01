@@ -1,0 +1,107 @@
+# ==========================================================================
+#  Calculadora de métodos numéricos — archivos que NO deben subirse al repo
+#  Se versiona solo el código fuente: CMakeLists.txt, src/, tests/,
+#  third_party/ (QCustomPlot es GPL-3.0 y su licencia debe viajar con el código).
+# ==========================================================================
+
+# ---------- Árboles de compilación ----------
+/build/
+/build-*/
+/cmake-build-*/
+/out/
+/build_dir/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+install_manifest.txt
+_deps/
+CMakeUserPresets.json
+
+# ---------- Artefactos de make / ninja ----------
+Makefile
+ninja.build.ninja
+.ninja_deps
+.ninja_log
+build.ninja
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.gch
+*.pch
+
+# ---------- Automoc / MOC / UIC / RCC de Qt ----------
+*_autogen/
+moc_*.cpp
+moc_*.h
+moc_predefs.h
+ui_*.h
+qrc_*.cpp
+.qmake.stash
+Makefile.*
+*.qmlc
+*.jsc
+.qmlc.dir/
+
+# ---------- Binarios del proyecto ----------
+/Biseccion
+/biseccion
+/parser_tests
+/biseccion_tests
+
+# ---------- Registros y reportes ----------
+*.log
+Testing/
+/core
+/core.*
+vgcore.*
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+*.gcov
+.cache/
+.pytest_cache/
+
+# ---------- Capturas y temporales del autotest (main.cpp) ----------
+/autotest*.png
+/biseccion_autotest.png
+
+# ---------- Editores e IDE ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.*.sw?
+*.bak
+*.orig
+*.rej
+.clangd/
+compile_flags.txt
+
+# ---------- Sistema operativo ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ---------- Bases de datos y credenciales ----------
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+secrets.*
