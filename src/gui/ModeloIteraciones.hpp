@@ -40,6 +40,11 @@ public:
     Qt::ItemFlags flags(const QModelIndex& indice) const override;
 
 private:
+    // Expande las columnas "de familia" (hoy CampoIteracion::VectorX) en una
+    // subcolumna por componente, usando la dimensión real del vector. Se llama
+    // desde setResultado, antes de beginResetModel.
+    void prepararColumnas(const DescriptorMetodo& descriptor, int dimension, int normaP);
+
     std::vector<Iteracion> iteraciones_;
     std::vector<ColumnaMetodo> columnas_;
     TipoResolucion tipo_ = TipoResolucion::RaizIntervalo;

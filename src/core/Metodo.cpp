@@ -11,6 +11,7 @@
 
 #include "Biseccion.hpp"
 #include "Funcion.hpp"
+#include "Jacobi.hpp"
 #include "NewtonRaphson.hpp"
 
 namespace biseccion {
@@ -27,6 +28,7 @@ std::vector<std::unique_ptr<MetodoNumerico>> catalogoMetodos() {
     metodos.push_back(std::make_unique<Biseccion>(std::function<double(double)>{}));
     metodos.push_back(std::make_unique<NewtonRaphson>(std::function<double(double)>{},
                                                       std::function<double(double)>{}));
+    metodos.push_back(std::make_unique<Jacobi>());
     return metodos;
 }
 
@@ -57,6 +59,15 @@ std::unique_ptr<MetodoNumerico> crearDesdeEntrada(const Entrada& entrada,
             return nullptr;
         }
         return std::make_unique<NewtonRaphson>(std::move(f->f), std::move(df->f));
+    }
+
+    if (clave == "jacobi") {
+        // No hay expresión que analizar: el sistema viaja en la propia Entrada
+        // (matriz, términos e iterada inicial) y el método lo valida al resolver.
+        // La forma del sistema la comprueba `Jacobi::validar`, que devuelve
+        // DimensionInvalida con el motivo; no es un fallo de construcción sino de
+        // resolución, así que aquí no se filtra.
+        return std::make_unique<Jacobi>();
     }
 
     // Método desconocido: no se puede construir.

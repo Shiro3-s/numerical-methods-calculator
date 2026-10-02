@@ -8,6 +8,8 @@
 #include <QString>
 
 #include <algorithm>
+#include <optional>
+#include <string>
 #include <utility>
 
 #include "core/Biseccion.hpp"
@@ -22,11 +24,44 @@ void ModeloIteraciones::setResultado(const Resultado& resultado,
                                      int cifras) {
     beginResetModel();
     iteraciones_ = resultado.iteraciones;
-    columnas_ = descriptor.columnas;
     // El descriptor manda sobre el tipo: es él quien decide qué campos existen.
     tipo_ = descriptor.tipo;
     cifras_ = std::clamp(cifras, 1, 12);
+    prepararColumnas(descriptor, resultado.dimension(), resultado.normaP);
     endResetModel();
+}
+
+void ModeloIteraciones::prepararColumnas(const DescriptorMetodo& descriptor, int dimension,
+                                         int normaP) {
+    columnas_.clear();
+    columnas_.reserve(descriptor.columnas.size());
+
+    // Una columna de sistema declara "x" UNA vez, pero un sistema de 5 ecuaciones
+    // tiene cinco componentes que mostrar. Se expande aquí en x₁…x_n, de modo que
+    // el descriptor no necesita saber la dimensión y la tabla se adapta sola.
+    for (const ColumnaMetodo& declarada : descriptor.columnas) {
+        if (declarada.campo != CampoIteracion::VectorX) {
+            // La cabecera de la norma lleva el p que se usó de verdad. El
+            // descriptor la declara en genérico porque no lo conoce: el p lo elige
+            // el usuario en el panel de entrada, y poner «‖Δx‖∞» fijo mentiría en
+            // cuanto lo cambiara.
+            ColumnaMetodo col = declarada;
+            if (col.campo == CampoIteracion::Norma && descriptor.tipo == TipoResolucion::Sistema) {
+                col.titulo = "‖Δx‖" + std::to_string(std::max(1, normaP));
+            }
+            columnas_.push_back(col);
+            continue;
+        }
+        for (int componente = 0; componente < dimension; ++componente) {
+            ColumnaMetodo sub = declarada;
+            sub.indice = componente;
+            // Rótulo con subíndice Unicode (x₁, x₂…): se lee como la tabla del
+            // libro de texto y cabe en la cabecera. Lo pone el núcleo, para que
+            // coincida con el rótulo que usa la narrativa del mismo componente.
+            sub.titulo = etiquetaVariable(static_cast<std::size_t>(componente));
+            columnas_.push_back(sub);
+        }
+    }
 }
 
 void ModeloIteraciones::setResultado(Resultado resultado, int cifras) {
@@ -95,7 +130,18 @@ QVariant ModeloIteraciones::data(const QModelIndex& indice, int rol) const {
     }
     const Iteracion& iteracion = iteraciones_[static_cast<std::size_t>(indice.row())];
     const auto& col = columnas_[static_cast<std::size_t>(indice.column())];
-    const auto v = valorCampo(iteracion, col.campo, tipo_);
+
+    // Una columna de sistema se resuelve por componente, no por valorCampo:
+    // un vector no cabe en un double, y `indice` dice cuál de sus componentes se
+    // pide.
+    std::optional<double> v;
+    if (col.campo == CampoIteracion::VectorX) {
+        v = (tipo_ == TipoResolucion::Sistema && col.indice >= 0)
+                 ? valorComponente(iteracion, static_cast<std::size_t>(col.indice))
+                 : std::nullopt;
+    } else {
+        v = valorCampo(iteracion, col.campo, tipo_);
+    }
 
     if (rol == Qt::DisplayRole) {
         if (!v.has_value()) {

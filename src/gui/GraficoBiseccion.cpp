@@ -81,8 +81,9 @@ void GraficoBiseccion::crearElementos() {
     tangente_->setPen(QPen(COLOR_TANGENTE, 1.6));
     tangente_->setVisible(false);
 
-    // Tracers ubicados sobre la curva en a, b y m.
-    const auto configurarTrazo = [this](QCPItemTracer* trazo, const QColor& color) {
+    // Tracers ubicados sobre la curva en a, b y m. La lambda no toca miembros,
+    // así que se queda sin `this`: los punteros se los recibe como argumentos.
+    const auto configurarTrazo = [](QCPItemTracer* trazo, const QColor& color) {
         trazo->setStyle(QCPItemTracer::tsCircle);
         trazo->setSize(9);
         trazo->setPen(QPen(color));
