@@ -10,12 +10,14 @@
 #include <QPointer>
 
 #include <memory>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <thread>
 
 #include "core/Biseccion.hpp"
 #include "core/Funcion.hpp"
+#include "core/Metodo.hpp"
 
 class QSplitter;
 
@@ -33,17 +35,27 @@ class VentanaPrincipal : public QMainWindow {
 public:
     explicit VentanaPrincipal(QWidget* padre = nullptr);
 
+    // Ejecuciones predefinidas (autotest y pruebas de interfaz offscreen):
+    // saltan el formulario y lanzan el método con una entrada válida.
+    Q_INVOKABLE void resolverPruebaBiseccion();
+    Q_INVOKABLE void resolverPruebaNewton();
+
 private slots:
-    void iniciarResolucion(const QString& expresion, double a, double b, int cifras);
+    void iniciarResolucion(const Entrada& entrada, const DescriptorMetodo& descriptor);
     void cancelarResolucion();
     void aplicarResultado(const std::shared_ptr<Resultado>& resultado,
-                          const Funcion& funcion, int cifras);
+                          std::optional<ErrorMetodo> error,
+                          const Entrada& entrada,
+                          const DescriptorMetodo& descriptor);
     void manejarIteracionSeleccionada(int k);
     void manejarMarcadorClickeado(int k);
 
 private:
     void construirInterfaz();
-    void cargarEjercicios();
+    void cargarMetodos();
+    void mostrarErrorAnalisis(const std::string& mensaje, const QString& consejo);
+    [[nodiscard]] QString escapar(QString texto) const;
+    [[nodiscard]] QString valoresEnExtremos(const Entrada& entrada) const;
 
     PanelEntrada* panelEntrada_ = nullptr;
     GraficoBiseccion* grafico_ = nullptr;
@@ -56,6 +68,13 @@ private:
 
     std::string ultimoFuncionTexto_;
     int ultimasCifras_ = 6;
+    DescriptorMetodo ultimoDescriptor_;
+    // Texto de f(x) tal como quedó tras el análisis (espacios normalizados):
+    // lo usan el resumen, el panel procedimental y el re-análisis del gráfico.
+    std::string ultimoTextoF_;
+    // 'cifras' viaja al aplicar el resultado a través de un lambda que corre en
+    // el hilo de la interfaz; este miembro lo lleva hasta allí.
+    int ultimasCifrasPendientes_ = 6;
 };
 
 }  // namespace biseccion

@@ -3,7 +3,7 @@
 #  Se versiona solo el código fuente: CMakeLists.txt, src/, tests/,
 #  third_party/ (QCustomPlot es GPL-3.0 y su licencia debe viajar con el código).
 # ==========================================================================
-
+/.agents/
 # ---------- Árboles de compilación ----------
 /build/
 /build-*/
@@ -56,6 +56,9 @@ Makefile.*
 /biseccion
 /parser_tests
 /biseccion_tests
+/metodo_tests
+/newton_tests
+/gui_tests
 
 # ---------- Registros y reportes ----------
 *.log

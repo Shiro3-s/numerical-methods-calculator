@@ -14,50 +14,26 @@
 
 #include <expected>
 #include <functional>
-#include <optional>
 #include <stop_token>
 #include <vector>
 
+#include "Metodo.hpp"
+
 namespace biseccion {
 
-enum class MotivoParada {
-    Interrumpido,          // el hilo recibió una solicitud de cancelación
-    RaizExacta,            // f(m) == 0 → la raíz es exactamente m
-    ToleranciaAlcanzada,   // e_a < tolerancia (paso 4)
-    MaxIteraciones,        // límite de iteraciones sin cumplir los criterios
-};
-
-enum class ErrorBiseccion {
-    SinCambioDeSigno,      // f(a) y f(b) no tienen signo opuesto → sin raíz garantizada
-};
-
-struct Iteracion {
-    int k = 0;
-    double a = 0.0;
-    double b = 0.0;
-    double m = 0.0;
-    double fa = 0.0;  // f(a)
-    double fb = 0.0;  // f(b)
-    double fm = 0.0;  // f(m)
-    // Error relativo porcentual; NO existe en la primera iteración (paso 4).
-    std::optional<double> eaPorcentaje;
-};
-
-struct Resultado {
-    std::vector<Iteracion> iteraciones;
-    MotivoParada motivo = MotivoParada::MaxIteraciones;
-
-    [[nodiscard]] double raiz() const;
-    [[nodiscard]] int iteracionesUsadas() const;
-};
-
 // Solventa el método en [a, b] con la tolerancia relativa indicada.
-class Biseccion {
+class Biseccion : public MetodoNumerico {
 public:
     explicit Biseccion(std::function<double(double)> f);
 
-    // Devuelve la tabla completa de iteraciones o un error tipado.
-    [[nodiscard]] std::expected<Resultado, ErrorBiseccion>
+    [[nodiscard]] DescriptorMetodo descriptor() const override;
+
+    // Interfaz uniforme con el resto de métodos.
+    [[nodiscard]] std::expected<Resultado, ErrorMetodo>
+    resolver(const Entrada& entrada, std::stop_token detener = {}) const override;
+
+    // API directa (conservada para tests y uso interno).
+    [[nodiscard]] std::expected<Resultado, ErrorMetodo>
     resolver(double a, double b,
              double toleranciaEsPorcentaje,
              int maxIteraciones = 120,
@@ -69,6 +45,8 @@ public:
     // a == b) y está acotado a 10 000 para que un intervalo patológico no
     // derive un bucle interminable en la GUI.
     [[nodiscard]] static int iteracionesParaCifras(double a, double b, int n);
+
+    [[nodiscard]] const std::function<double(double)>& funcion() const;
 
 private:
     std::function<double(double)> f_;

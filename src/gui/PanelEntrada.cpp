@@ -1,6 +1,8 @@
 // PanelEntrada.cpp
 // -----------------------------------------------------------------------------
-// Implementación del panel de entrada de datos.
+// Panel 1 · Entrada: selector de método (no de ejercicios), campos dinámicos
+// según el descriptor (intervalo [a,b] vs x0, expresión auxiliar f'(x)...) y
+// señal dirigida por descriptor (Entrada + DescriptorMetodo).
 // -----------------------------------------------------------------------------
 #include "PanelEntrada.hpp"
 
@@ -18,31 +20,46 @@
 #include <algorithm>
 #include <cmath>
 
+#include "core/Metodo.hpp"
 #include "core/Biseccion.hpp"
-#include "ejercicios/Ejercicios.hpp"
 
 namespace biseccion {
 
 PanelEntrada::PanelEntrada(QWidget* padre) : QWidget(padre) {
-    auto* caja = new QGroupBox(tr("Entrada de la función"), this);
+    auto* caja = new QGroupBox(tr("Entrada de datos"), this);
     auto* formulario = new QFormLayout(caja);
 
-    comboEjercicios_ = new QComboBox(caja);
-    formulario->addRow(tr("Ejercicio:"), comboEjercicios_);
+    comboMetodo_ = new QComboBox(caja);
+    formulario->addRow(tr("Método:"), comboMetodo_);
 
     campoFuncion_ = new QLineEdit(caja);
     campoFuncion_->setPlaceholderText(
         tr("p. ej. 5x - 2sin(x) + x^2  ·  sin, cos, asin, ln, log, abs…"));
     formulario->addRow(tr("f(x) ="), campoFuncion_);
 
+    etiquetaAux_ = new QLabel(tr("f'(x) ="), caja);
+    campoFuncionAux_ = new QLineEdit(caja);
+    campoFuncionAux_->setPlaceholderText(tr("p. ej. 1 + sin(x)"));
+    formulario->addRow(etiquetaAux_, campoFuncionAux_);
+
+    etiquetaA_ = new QLabel(tr("a (extremo inferior):"), caja);
     spinA_ = new QDoubleSpinBox(caja);
     spinA_->setRange(-1.0e6, 1.0e6);
     spinA_->setDecimals(6);
+    formulario->addRow(etiquetaA_, spinA_);
+
+    etiquetaB_ = new QLabel(tr("b (extremo superior):"), caja);
     spinB_ = new QDoubleSpinBox(caja);
     spinB_->setRange(-1.0e6, 1.0e6);
     spinB_->setDecimals(6);
-    formulario->addRow(tr("a (extremo inferior):"), spinA_);
-    formulario->addRow(tr("b (extremo superior):"), spinB_);
+    formulario->addRow(etiquetaB_, spinB_);
+
+    etiquetaX0_ = new QLabel(tr("x₀ (iterada inicial):"), caja);
+    spinX0_ = new QDoubleSpinBox(caja);
+    spinX0_->setRange(-1.0e6, 1.0e6);
+    spinX0_->setDecimals(6);
+    spinX0_->setValue(1.0);
+    formulario->addRow(etiquetaX0_, spinX0_);
 
     spinCifras_ = new QSpinBox(caja);
     spinCifras_->setRange(1, 12);
@@ -71,99 +88,94 @@ PanelEntrada::PanelEntrada(QWidget* padre) : QWidget(padre) {
     diseno->addWidget(etiquetaInfo_);
     diseno->addStretch(1);
 
-    // Conexiones.
-    connect(comboEjercicios_, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, &PanelEntrada::aplicarEjercicio);
+    connect(comboMetodo_, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &PanelEntrada::metodoCambiado);
     connect(botonResolver_, &QPushButton::clicked, this, &PanelEntrada::modoResolver);
     connect(botonCancelar_, &QPushButton::clicked, this, &PanelEntrada::modoCancelar);
-    connect(campoFuncion_, &QLineEdit::textEdited,
-            this, &PanelEntrada::marcarFuncionPersonalizada);
     connect(spinCifras_, qOverload<int>(&QSpinBox::valueChanged),
             this, &PanelEntrada::actualizarInfo);
     connect(spinA_, qOverload<double>(&QDoubleSpinBox::valueChanged),
             this, &PanelEntrada::actualizarInfo);
     connect(spinB_, qOverload<double>(&QDoubleSpinBox::valueChanged),
             this, &PanelEntrada::actualizarInfo);
+    connect(spinX0_, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, &PanelEntrada::actualizarInfo);
 }
 
-void PanelEntrada::cargarPresets() {
-    comboEjercicios_->blockSignals(true);
-    comboEjercicios_->clear();
-    const auto& presets = ejerciciosPredeterminados();
-    for (const auto& ejercicio : presets) {
-        comboEjercicios_->addItem(QString::fromStdString(ejercicio.nombre));
-    }
-    // Entrada «Calculadora libre»: no corresponde a ningún preset; el usuario
-    // digita f(x) y el intervalo por completo. Se coloca al final para no
-    // alterar el comportamiento de arranque (E1 sigue siendo el primero).
-    comboEjercicios_->addItem(tr("Calculadora libre"));
-    comboEjercicios_->setCurrentIndex(0);
-    comboEjercicios_->blockSignals(false);
-    aplicarEjercicio(0);  // aplica el primer preset y actualiza la información
-}
+void PanelEntrada::cargarMetodos() {
+    comboMetodo_->blockSignals(true);
+    comboMetodo_->clear();
+    descriptores_.clear();
 
-void PanelEntrada::aplicarEjercicio(int indice) {
-    const auto& presets = ejerciciosPredeterminados();
-    if (indice < 0) {
-        return;
+    for (auto& m : catalogoMetodos()) {
+        descriptores_.push_back(m->descriptor());
     }
-    const auto total = static_cast<int>(presets.size());
-    if (indice >= total) {
-        aplicarModoLibre();  // últimos ítems del selector: «Calculadora libre»
-        return;
-    }
-    const Ejercicio& ejercicio = presets[static_cast<std::size_t>(indice)];
-    aplicarFuncion(QString::fromStdString(ejercicio.funcionTexto),
-                   ejercicio.a, ejercicio.b, spinCifras_->value(),
-                   QString::fromStdString(ejercicio.descripcion));
-}
 
-void PanelEntrada::aplicarFuncion(const QString& expresion, double a, double b,
-                                  int cifras, const QString& descripcion) {
-    campoFuncion_->setText(expresion);
-    spinA_->setValue(a);
-    spinB_->setValue(b);
-    spinCifras_->setValue(cifras);
-    etiquetaDescripcion_->setText(descripcion);
-    funcionPersonalizada_ = false;  // es un preset: el intervalo proviene del enunciado
-    modoLibre_ = false;             // un preset cancela el modo «Calculadora libre»
+    for (const auto& d : descriptores_) {
+        comboMetodo_->addItem(QString::fromStdString(d.nombre));
+    }
+
+    comboMetodo_->setCurrentIndex(0);
+    comboMetodo_->blockSignals(false);
+
+    if (!descriptores_.empty()) {
+        configurarParaDescriptor(descriptores_[0]);
+    }
     actualizarInfo();
 }
 
-// «Calculadora libre»: el usuario digita f(x) y el intervalo [a, b] por completo;
-// nada proviene de un preset, por lo que no se muestra el aviso de «f(x) editada»:
-// en este modo editar a mano es el comportamiento esperado.
-void PanelEntrada::aplicarModoLibre() {
-    campoFuncion_->clear();
-    campoFuncion_->setFocus();
-    spinA_->setValue(0.0);
-    spinB_->setValue(1.0);
-    etiquetaDescripcion_->setText(
-        tr("Calculadora libre: digite f(x) y el intervalo [a, b] a su gusto."));
-    funcionPersonalizada_ = false;  // en modo libre editar a mano es lo normal
-    modoLibre_ = true;
+void PanelEntrada::metodoCambiado(int indice) {
+    if (indice < 0 || static_cast<std::size_t>(indice) >= descriptores_.size()) {
+        return;
+    }
+    configurarParaDescriptor(descriptores_[static_cast<std::size_t>(indice)]);
     actualizarInfo();
 }
 
-void PanelEntrada::marcarFuncionPersonalizada() {
-    // Las ediciones del usuario en f(x) no actualizan [a, b]; el aviso visual
-    // recuerda verificar que el intervalo aún contenga la raíz.
-    if (!funcionPersonalizada_) {
-        funcionPersonalizada_ = true;
-        actualizarInfo();
+void PanelEntrada::configurarParaDescriptor(const DescriptorMetodo& d) {
+    etiquetaDescripcion_->setText(QString::fromStdString(d.descripcion));
+
+    const bool requiereAux = d.requiereExpresionAuxiliar;
+    etiquetaAux_->setVisible(requiereAux);
+    campoFuncionAux_->setVisible(requiereAux);
+    if (requiereAux) {
+        etiquetaAux_->setText(QString::fromStdString(d.etiquetaAuxiliar.empty() ? "f'(x) =" : (d.etiquetaAuxiliar + " =")));
+        campoFuncionAux_->clear();
     }
+
+    const bool intervalo = (d.tipo == TipoResolucion::RaizIntervalo);
+    const bool punto = (d.tipo == TipoResolucion::RaizPuntoInicial);
+    etiquetaA_->setVisible(intervalo);
+    spinA_->setVisible(intervalo);
+    etiquetaB_->setVisible(intervalo);
+    spinB_->setVisible(intervalo);
+    etiquetaX0_->setVisible(punto);
+    spinX0_->setVisible(punto);
+
+    // Sistema (futuro): por ahora no mostramos campos de matriz; gráfico oculto
+    // queda preparado para cuando se implemente Jacobi.
+}
+
+DescriptorMetodo PanelEntrada::descriptorSeleccionado() const {
+    const int i = comboMetodo_->currentIndex();
+    if (i < 0 || static_cast<std::size_t>(i) >= descriptores_.size()) {
+        return DescriptorMetodo{};
+    }
+    return descriptores_[static_cast<std::size_t>(i)];
 }
 
 void PanelEntrada::modoResolver() {
     if (resolviendo_) {
         return;
     }
-    // La conexión es directa: VentanaPrincipal::iniciarResolucion bloquea los
-    // controles SOLO si el cálculo arranca. Deshabilitarlos aquí dejaría la
-    // interfaz bloqueada para siempre cuando la expresión no se puede analizar.
-    Q_EMIT resolverSolicitado(campoFuncion_->text().trimmed(),
-                              spinA_->value(), spinB_->value(),
-                              spinCifras_->value());
+    Entrada e;
+    e.expresion = campoFuncion_->text().trimmed().toStdString();
+    e.expresionAuxiliar = campoFuncionAux_->text().trimmed().toStdString();
+    e.a = spinA_->value();
+    e.b = spinB_->value();
+    e.x0 = spinX0_->value();
+    e.cifras = spinCifras_->value();
+    Q_EMIT resolverSolicitado(e, descriptorSeleccionado());
 }
 
 void PanelEntrada::modoCancelar() {
@@ -175,9 +187,11 @@ void PanelEntrada::habilitarEjecucion(bool habilitado) {
     botonResolver_->setEnabled(habilitado);
     botonCancelar_->setVisible(!habilitado);
     campoFuncion_->setEnabled(habilitado);
-    comboEjercicios_->setEnabled(habilitado);
+    campoFuncionAux_->setEnabled(habilitado);
+    comboMetodo_->setEnabled(habilitado);
     spinA_->setEnabled(habilitado);
     spinB_->setEnabled(habilitado);
+    spinX0_->setEnabled(habilitado);
     if (habilitado) {
         actualizarInfo();
     }
@@ -185,18 +199,17 @@ void PanelEntrada::habilitarEjecucion(bool habilitado) {
 
 void PanelEntrada::actualizarInfo() {
     const int n = spinCifras_->value();
-    const double es = 0.5 * std::pow(10.0, 2.0 - n);  // E_s en porcentaje
-    const int estimadas = Biseccion::iteracionesParaCifras(spinA_->value(), spinB_->value(), n);
-    QString texto = tr("E_s = %1 % (n = %2 cifras significativas)\n"
-                       "Iteraciones estimadas para %2 cifras exactas: k ≈ %3")
-                        .arg(QString::number(es, 'g', 6))
-                        .arg(n)
-                        .arg(estimadas);
-    if (funcionPersonalizada_) {
-        texto += tr("\n⚠ f(x) editada a mano: revise que el intervalo [%1, %2] "
-                    "siga conteniendo la raíz.")
-                     .arg(spinA_->value())
-                     .arg(spinB_->value());
+    const double es = 0.5 * std::pow(10.0, 2.0 - n);
+    const auto d = descriptorSeleccionado();
+    QString texto = tr("E_s = %1 % (n = %2 cifras significativas)")
+                         .arg(QString::number(es, 'g', 6))
+                         .arg(n);
+
+    if (d.admiteEstimacionAbsoluta && d.tipo == TipoResolucion::RaizIntervalo) {
+        const int estimadas = Biseccion::iteracionesParaCifras(spinA_->value(), spinB_->value(), n);
+        texto += tr("\nIteraciones estimadas para %1 cifras exactas: k ≈ %2")
+                     .arg(n)
+                     .arg(estimadas);
     }
     etiquetaInfo_->setText(texto);
 }

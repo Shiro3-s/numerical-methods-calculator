@@ -9,7 +9,8 @@
 
 #include <string>
 
-#include "core/Biseccion.hpp"
+#include "core/Metodo.hpp"
+#include "core/Resultado.hpp"
 
 namespace biseccion {
 
@@ -19,11 +20,14 @@ class PanelProcedimiento : public QTextBrowser {
 public:
     explicit PanelProcedimiento(QWidget* padre = nullptr);
 
-    // Detalle aritmético de una iteración concreta.
-    void mostrarIteracion(const Iteracion& iteracion, const std::string& funcionTexto, int cifras);
+    // Detalle aritmético de una iteración concreta. Los pasos narrativos
+    // dependen del método: los 5 pasos obligatorios son de bisección, no de la app.
+    void mostrarIteracion(const Iteracion& iteracion, const std::string& funcionTexto,
+                          int cifras, const DescriptorMetodo& descriptor);
 
     // Resumen final tras completar la resolución.
-    void mostrarResumen(const Resultado& resultado, const std::string& funcionTexto, int cifras);
+    void mostrarResumen(const Resultado& resultado, const std::string& funcionTexto,
+                        int cifras, const DescriptorMetodo& descriptor);
 
     // Mensaje informativo (o de error).
     void mostrarInformacion(const QString& html);
@@ -35,6 +39,9 @@ public:
 
 private:
     static QString aTexto(double valor, int cifras);
+    [[nodiscard]] QString narrarBiseccion(const Iteracion&, const QString&, int) const;
+    [[nodiscard]] QString narrarNewton(const Iteracion&, const QString&, int) const;
+    [[nodiscard]] static QString narrarMotivo(MotivoParada motivo);
 };
 
 }  // namespace biseccion

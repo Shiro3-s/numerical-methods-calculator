@@ -1,10 +1,13 @@
 // main.cpp
 // -----------------------------------------------------------------------------
 // Punto de entrada de la aplicación. Modo gráfico por defecto y modos de
-// consola para verificar la solución matemática:
-//   ./Biseccion            → abre la interfaz gráfica
-//   ./Biseccion --verificar → comprueba raíces e iteraciones (E1–E4)
-//   ./Biseccion --tablas   → imprime las tablas completas de iteraciones
+// consola para verificar la solución matemática sin abrir la interfaz:
+//   ./Biseccion              → abre la interfaz gráfica
+//   ./Biseccion --metodos    → describe el catálogo de métodos disponible
+//   ./Biseccion --verificar  → comprueba raíces e iteraciones (E1–E4)
+//   ./Biseccion --tablas     → imprime las tablas completas de iteraciones
+//   ./Biseccion --comparar   → contrasta bisección y Newton-Raphson en las
+//                              mismas raíces (E1–E4)
 // -----------------------------------------------------------------------------
 #include <QApplication>
 #include <QTimer>
@@ -17,12 +20,38 @@
 
 #include "core/Biseccion.hpp"
 #include "core/CifrasSignificativas.hpp"
+#include "core/Metodo.hpp"
+#include "core/NewtonRaphson.hpp"
+#include "core/Resultado.hpp"
 #include "ejercicios/Ejercicios.hpp"
 #include "gui/VentanaPrincipal.hpp"
 
 namespace {
 
 using namespace biseccion;
+
+int metodosEnConsola() {
+    std::println("=== Catálogo de métodos ===");
+    for (const auto& metodo : catalogoMetodos()) {
+        const DescriptorMetodo d = metodo->descriptor();
+        std::println("· {}  [{}]", d.nombre, d.clave);
+        std::println("    {}", d.descripcion);
+        std::println("    tipo de entrada : {}",
+                     d.tipo == TipoResolucion::RaizIntervalo    ? "intervalo [a, b]"
+                     : d.tipo == TipoResolucion::RaizPuntoInicial ? "punto inicial x₀"
+                                                                  : "sistema de ecuaciones");
+        std::println("    expresión auxiliar: {}",
+                     d.requiereExpresionAuxiliar ? d.etiquetaAuxiliar : "(ninguna)");
+        std::println("    columnas        :");
+        for (std::size_t i = 0; i < d.columnas.size(); ++i) {
+            std::println("      {} {}", i + 1, d.columnas[i].titulo);
+        }
+        std::println("    gráfico: {}   trazado asociado: {}",
+                     d.muestraGrafico ? "sí" : "oculto",
+                     d.muestraTrazado ? "sí" : "no");
+    }
+    return 0;
+}
 
 int verificarEnConsola() {
     std::println("=== Verificación matemática del método de bisección (E1–E4) ===");
@@ -44,11 +73,11 @@ int verificarEnConsola() {
 
         std::println("  n cifras | iteraciones (criterio absoluto) | iteraciones (e_a < E_s)");
         for (const int n : {4, 5, 6}) {
-            const int absoluas = Biseccion::iteracionesParaCifras(ejercicio.a, ejercicio.b, n);
+            const int absolutas = Biseccion::iteracionesParaCifras(ejercicio.a, ejercicio.b, n);
             const double es = 0.5 * std::pow(10.0, 2.0 - n);
             const auto relativo = algoritmo.resolver(ejercicio.a, ejercicio.b, es, 400);
             const int relativas = relativo.has_value() ? relativo->iteracionesUsadas() : -1;
-            std::println("  {:>6}  |           {:>6}          |        {:>6}", n, absoluas, relativas);
+            std::println("  {:>6}  |           {:>6}          |        {:>6}", n, absolutas, relativas);
         }
     }
     return 0;
@@ -76,6 +105,37 @@ int imprimirTablasEnConsola() {
     return 0;
 }
 
+// Compara los dos métodos sobre las mismas cuatro raíces. Muestra por qué
+// Newton-Raphson necesita un punto inicial y una derivada, y a cambio converge
+// en un puñado de iteraciones donde bisección necesita veinte.
+int compararEnConsola() {
+    std::println("=== Bisección frente a Newton-Raphson (n = 6, E_s = 0.005 %) ===");
+    std::println("{:>34} | {:>10} | {:>10} | {:>16}",
+                 "f(x)", "bisección", "Newton", "x (Newton)");
+    for (const Ejercicio& ejercicio : ejerciciosPredeterminados()) {
+        const double es = 0.5 * std::pow(10.0, 2.0 - 6);
+
+        const Biseccion biseccion(ejercicio.f);
+        const auto conBiseccion = biseccion.resolver(ejercicio.a, ejercicio.b, es, 400);
+
+        // La derivada viene en el propio ejercicio (la app no la deduce: el
+        // usuario la escribe, igual que en el formulario de Newton-Raphson).
+        const NewtonRaphson newton(ejercicio.f, ejercicio.df);
+        // Punto inicial razonable: el punto medio del intervalo, que para estos
+        // cuatro ejercicios no anula f'(x₀).
+        const auto conNewton = newton.resolver((ejercicio.a + ejercicio.b) / 2.0, es, 400);
+
+        std::println("{:>34} | {:>10} | {:>10} | {:>16.12f}",
+                     ejercicio.funcionTexto,
+                     conBiseccion ? conBiseccion->iteracionesUsadas() : -1,
+                     conNewton ? conNewton->iteracionesUsadas() : -1,
+                     conNewton ? conNewton->raiz() : std::numeric_limits<double>::quiet_NaN());
+    }
+    std::println("\nMisma raíz, muchas menos iteraciones: esa es la ventaja de Newton,");
+    std::println("a cambio de escribir f'(x) y elegir bien la iterada inicial x₀.");
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -86,27 +146,32 @@ int main(int argc, char** argv) {
     if (modo == "--tablas") {
         return imprimirTablasEnConsola();
     }
+    if (modo == "--metodos") {
+        return metodosEnConsola();
+    }
+    if (modo == "--comparar") {
+        return compararEnConsola();
+    }
 
     QApplication app(argc, argv);
-    QApplication::setApplicationName(QStringLiteral("Bisección"));
-    QApplication::setApplicationVersion(QStringLiteral("1.0.0"));
+    QApplication::setApplicationName(QStringLiteral("Métodos Numéricos"));
+    QApplication::setApplicationVersion(QStringLiteral("1.1.0"));
 
     VentanaPrincipal ventana;
     ventana.show();
 
-    // Autotest opcional (solo con BISECCION_AUTOTEST=1): resuelve el Ejercicio 1
-    // mediante el mismo camino que la interfaz y cierra la aplicación.
+    // Autotest opcional (solo con BISECCION_AUTOTEST=1): recorre el mismo camino
+    // que la interfaz con los dos métodos y guarda una captura de cada uno.
     if (qEnvironmentVariableIsSet("BISECCION_AUTOTEST")) {
-        QTimer::singleShot(400, &ventana, [&ventana] {
-            QMetaObject::invokeMethod(
-                &ventana, "iniciarResolucion",
-                Q_ARG(QString, QStringLiteral("x - cos(x)")),
-                Q_ARG(double, 0.0), Q_ARG(double, 1.0), Q_ARG(int, 6));
+        QTimer::singleShot(400, &ventana, &VentanaPrincipal::resolverPruebaBiseccion);
+        QTimer::singleShot(1200, &ventana, [&ventana] {
+            ventana.grab().save(QStringLiteral("/tmp/opencode/autotest_biseccion.png"));
+            ventana.resolverPruebaNewton();
         });
-        QTimer::singleShot(1400, &ventana, [&ventana] {
-            ventana.grab().save(QStringLiteral("/tmp/opencode/biseccion_autotest.png"));
+        QTimer::singleShot(2200, &ventana, [&ventana] {
+            ventana.grab().save(QStringLiteral("/tmp/opencode/autotest_newton.png"));
+            QApplication::quit();
         });
-        QTimer::singleShot(1600, &ventana, &QApplication::quit);
     }
 
     return app.exec();
