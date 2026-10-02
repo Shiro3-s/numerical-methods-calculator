@@ -99,7 +99,7 @@ int main() {
         const auto resultado = biseccion.resolver(-1.0, 1.0, 0.5 * std::pow(10.0, 2.0 - 6), 100);
         comprobar(!resultado.has_value(), "f(a)·f(b) >= 0 debe reportar error");
         if (!resultado) {
-            comprobar(resultado.error() == ErrorBiseccion::SinCambioDeSigno,
+            comprobar(resultado.error() == ErrorMetodo::SinCambioDeSigno,
                       "el error debe ser SinCambioDeSigno");
         }
     }

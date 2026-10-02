@@ -30,32 +30,47 @@ constexpr int kMaxIteracionesEstimadas = 10'000;
                                             double fa, double fb) {
     Resultado resultado;
     resultado.motivo = MotivoParada::RaizExacta;
+    resultado.tipo = TipoResolucion::RaizIntervalo;
     Iteracion iteracion;
     iteracion.k = 1;
     iteracion.a = a;
     iteracion.b = b;
     iteracion.m = raiz;
+    iteracion.x = raiz;
     iteracion.fa = fa;
     iteracion.fb = fb;
-    iteracion.fm = 0.0;  // f(raíz) = 0 por construcción
+    iteracion.fm = 0.0;
+    iteracion.fx = 0.0;
     resultado.iteraciones.push_back(iteracion);
     return resultado;
 }
 
 }  // namespace
 
-double Resultado::raiz() const {
-    if (iteraciones.empty()) {
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-    return iteraciones.back().m;
-}
-
-int Resultado::iteracionesUsadas() const {
-    return static_cast<int>(iteraciones.size());
-}
-
 Biseccion::Biseccion(std::function<double(double)> f) : f_(std::move(f)) {}
+
+DescriptorMetodo Biseccion::descriptor() const {
+    DescriptorMetodo d;
+    d.clave = "biseccion";
+    d.nombre = "Bisección";
+    d.descripcion = "Método de bisección: intervalo [a, b] con f(a)·f(b) < 0";
+    d.tipo = TipoResolucion::RaizIntervalo;
+    d.etiquetaAuxiliar.clear();
+    d.requiereExpresionAuxiliar = false;
+    d.etiquetaRaiz = "m";
+    d.muestraGrafico = true;
+    d.muestraTrazado = false;
+    d.admiteEstimacionAbsoluta = true;
+    d.columnas = {
+        { "k", CampoIteracion::K },
+        { "a", CampoIteracion::A },
+        { "b", CampoIteracion::B },
+        { "m", CampoIteracion::M },
+        { "f(m)", CampoIteracion::Fm },
+        { "e_a (%)", CampoIteracion::Ea },
+    };
+    return d;
+}
 
 int Biseccion::iteracionesParaCifras(double a, double b, int n) {
     n = std::clamp(n, 1, 15);
@@ -75,7 +90,15 @@ int Biseccion::iteracionesParaCifras(double a, double b, int n) {
                       kMaxIteracionesEstimadas);
 }
 
-std::expected<Resultado, ErrorBiseccion>
+std::expected<Resultado, ErrorMetodo>
+Biseccion::resolver(const Entrada& entrada, std::stop_token detener) const {
+    const int n = std::clamp(entrada.cifras, 1, 12);
+    const double es = 0.5 * std::pow(10.0, 2.0 - n);
+    const int maxIter = std::max(300, iteracionesParaCifras(entrada.a, entrada.b, n) + 20);
+    return resolver(entrada.a, entrada.b, es, maxIter, detener);
+}
+
+std::expected<Resultado, ErrorMetodo>
 Biseccion::resolver(double a, double b, double toleranciaEsPorcentaje,
                     int maxIteraciones, std::stop_token detener) const {
     // ---------- Paso 1: verificación inicial -----------------------------
@@ -91,10 +114,11 @@ Biseccion::resolver(double a, double b, double toleranciaEsPorcentaje,
     }
     if (!signosOpuestos(faInicial, fbInicial)) {
         // Sin cambio de signo, no se garantiza una raíz en [a, b].
-        return std::unexpected(ErrorBiseccion::SinCambioDeSigno);
+        return std::unexpected(ErrorMetodo::SinCambioDeSigno);
     }
 
     Resultado resultado;
+    resultado.tipo = TipoResolucion::RaizIntervalo;
     double fa = faInicial;
     double fb = fbInicial;
     double mAnterior = std::numeric_limits<double>::quiet_NaN();
@@ -114,9 +138,11 @@ Biseccion::resolver(double a, double b, double toleranciaEsPorcentaje,
         iteracion.a = a;
         iteracion.b = b;
         iteracion.m = m;
+        iteracion.x = m;  // coherente para el modelo genérico
         iteracion.fa = fa;
         iteracion.fb = fb;  // f(b) se arrastra desde la vuelta anterior
         iteracion.fm = fm;
+        iteracion.fx = fm;
 
         // ---------- Paso 4: error relativo porcentual -------------------
         // e_a = |(m_actual − m_anterior) / m_actual| · 100
@@ -130,31 +156,35 @@ Biseccion::resolver(double a, double b, double toleranciaEsPorcentaje,
         }
         resultado.iteraciones.push_back(iteracion);
         if (resultado.motivo == MotivoParada::ToleranciaAlcanzada) {
-            break;
-        }
+        break;
+    }
 
-        // ---------- Paso 3: signo de f(a)·f(m) --------------------------
-        // La decisión usa f(m) == 0 y la comparación de signos; el producto
-        // fa·fm solo se muestra en el panel procedimental.
-        if (fm == 0.0) {
-            // 3c: raíz exacta en m; el algoritmo termina.
-            resultado.motivo = MotivoParada::RaizExacta;
-            break;
-        }
-        if (signosOpuestos(fa, fm)) {
-            // 3a: la raíz está en la mitad inferior → nuevo b = m.
-            b = m;
-            fb = fm;
-        } else {
-            // 3b: la raíz está en la mitad superior → nuevo a = m.
-            a = m;
-            fa = fm;
-        }
+    // ---------- Paso 3: signo de f(a)·f(m) --------------------------
+    // La decisión usa f(m) == 0 y la comparación de signos; el producto
+    // fa·fm solo se muestra en el panel procedimental.
+    if (fm == 0.0) {
+        // 3c: raíz exacta en m; el algoritmo termina.
+        resultado.motivo = MotivoParada::RaizExacta;
+        break;
+    }
+    if (signosOpuestos(fa, fm)) {
+        // 3a: la raíz está en la mitad inferior → nuevo b = m.
+        b = m;
+        fb = fm;
+    } else {
+        // 3b: la raíz está en la mitad superior → nuevo a = m.
+        a = m;
+        fa = fm;
+    }
 
-        mAnterior = m;
+    mAnterior = m;
     }
 
     return resultado;
+}
+
+const std::function<double(double)>& Biseccion::funcion() const {
+    return f_;
 }
 
 }  // namespace biseccion

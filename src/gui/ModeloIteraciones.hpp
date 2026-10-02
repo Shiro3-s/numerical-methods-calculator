@@ -10,7 +10,8 @@
 
 #include <vector>
 
-#include "core/Biseccion.hpp"
+#include "core/Resultado.hpp"
+#include "core/Metodo.hpp"
 
 namespace biseccion {
 
@@ -18,19 +19,11 @@ class ModeloIteraciones : public QAbstractTableModel {
     Q_OBJECT
 
 public:
-    enum Columna {
-        ColK = 0,
-        ColA,
-        ColB,
-        ColM,
-        ColFm,
-        ColEa,
-        NumColumnas,
-    };
-
     explicit ModeloIteraciones(QObject* padre = nullptr);
 
-    void setResultado(Resultado resultado, int cifras);
+    // Carga resultado con las columnas del descriptor del método.
+    void setResultado(const Resultado& resultado, const DescriptorMetodo& descriptor, int cifras);
+    void setResultado(Resultado resultado, int cifras);  // compatibilidad (usará bisección)
     void limpiar();
     [[nodiscard]] bool vacio() const;
 
@@ -48,6 +41,8 @@ public:
 
 private:
     std::vector<Iteracion> iteraciones_;
+    std::vector<ColumnaMetodo> columnas_;
+    TipoResolucion tipo_ = TipoResolucion::RaizIntervalo;
     int cifras_ = 6;
 };
 

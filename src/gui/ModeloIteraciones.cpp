@@ -1,6 +1,7 @@
 // ModeloIteraciones.cpp
 // -----------------------------------------------------------------------------
-// Implementación del modelo de tabla con formato dinámico de decimales.
+// Modelo de tabla dirigido por descriptor: los encabezados y los campos a leer
+// dependen del método (bisección vs Newton-Raphson).
 // -----------------------------------------------------------------------------
 #include "ModeloIteraciones.hpp"
 
@@ -9,22 +10,35 @@
 #include <algorithm>
 #include <utility>
 
+#include "core/Biseccion.hpp"
 #include "core/CifrasSignificativas.hpp"
 
 namespace biseccion {
 
 ModeloIteraciones::ModeloIteraciones(QObject* padre) : QAbstractTableModel(padre) {}
 
-void ModeloIteraciones::setResultado(Resultado resultado, int cifras) {
+void ModeloIteraciones::setResultado(const Resultado& resultado,
+                                     const DescriptorMetodo& descriptor,
+                                     int cifras) {
     beginResetModel();
-    iteraciones_ = std::move(resultado.iteraciones);
+    iteraciones_ = resultado.iteraciones;
+    columnas_ = descriptor.columnas;
+    // El descriptor manda sobre el tipo: es él quien decide qué campos existen.
+    tipo_ = descriptor.tipo;
     cifras_ = std::clamp(cifras, 1, 12);
     endResetModel();
+}
+
+void ModeloIteraciones::setResultado(Resultado resultado, int cifras) {
+    const Biseccion b(std::function<double(double)>{});
+    setResultado(resultado, b.descriptor(), cifras);
 }
 
 void ModeloIteraciones::limpiar() {
     beginResetModel();
     iteraciones_.clear();
+    columnas_.clear();
+    tipo_ = TipoResolucion::RaizIntervalo;
     endResetModel();
 }
 
@@ -60,65 +74,46 @@ int ModeloIteraciones::rowCount(const QModelIndex& padre) const {
 }
 
 int ModeloIteraciones::columnCount(const QModelIndex& padre) const {
-    return padre.isValid() ? 0 : NumColumnas;
+    return padre.isValid() ? 0 : static_cast<int>(columnas_.size());
 }
 
 QVariant ModeloIteraciones::headerData(int seccion, Qt::Orientation orientacion, int rol) const {
     if (orientacion != Qt::Horizontal || rol != Qt::DisplayRole) {
         return QVariant();
     }
-    switch (seccion) {
-        case ColK: return tr("k");
-        case ColA: return tr("a");
-        case ColB: return tr("b");
-        case ColM: return tr("m");
-        case ColFm: return tr("f(m)");
-        case ColEa: return tr("e\u2090 (%)");  // e subíndice a
-        default: return QVariant();
+    if (seccion < 0 || static_cast<std::size_t>(seccion) >= columnas_.size()) {
+        return QVariant();
     }
+    return QString::fromStdString(columnas_[static_cast<std::size_t>(seccion)].titulo);
 }
 
 QVariant ModeloIteraciones::data(const QModelIndex& indice, int rol) const {
     if (!indice.isValid() ||
-        indice.row() < 0 || indice.row() >= static_cast<int>(iteraciones_.size())) {
+        indice.row() < 0 || indice.row() >= static_cast<int>(iteraciones_.size()) ||
+        indice.column() < 0 || static_cast<std::size_t>(indice.column()) >= columnas_.size()) {
         return QVariant();
     }
     const Iteracion& iteracion = iteraciones_[static_cast<std::size_t>(indice.row())];
+    const auto& col = columnas_[static_cast<std::size_t>(indice.column())];
+    const auto v = valorCampo(iteracion, col.campo, tipo_);
 
     if (rol == Qt::DisplayRole) {
-        switch (indice.column()) {
-            case ColK:
-                return iteracion.k;
-            case ColA:
-                return QString::fromStdString(formatearParaCifras(iteracion.a, cifras_));
-            case ColB:
-                return QString::fromStdString(formatearParaCifras(iteracion.b, cifras_));
-            case ColM:
-                return QString::fromStdString(formatearParaCifras(iteracion.m, cifras_));
-            case ColFm:
-                return QString::fromStdString(formatearParaCifras(iteracion.fm, cifras_));
-            case ColEa:
-                return iteracion.eaPorcentaje
-                           ? QString::fromStdString(
-                                 formatearParaCifras(*iteracion.eaPorcentaje, cifras_))
-                           : tr("\u2014");  // em dash: no hay e_a en la primera iteración
-            default:
-                return QVariant();
+        if (!v.has_value()) {
+            return tr("—");
         }
+        const double val = *v;
+        // K se muestra entero
+        if (col.campo == CampoIteracion::K) {
+            return static_cast<int>(std::lround(val));
+        }
+        return QString::fromStdString(formatearParaCifras(val, cifras_));
     }
 
     if (rol == Qt::ToolTipRole) {
-        // Precisión completa reservada para inspección (no contaminar la vista).
-        switch (indice.column()) {
-            case ColA: return QString::number(iteracion.a, 'g', 17);
-            case ColB: return QString::number(iteracion.b, 'g', 17);
-            case ColM: return QString::number(iteracion.m, 'g', 17);
-            case ColFm: return QString::number(iteracion.fm, 'g', 17);
-            case ColEa:
-                return iteracion.eaPorcentaje ? QString::number(*iteracion.eaPorcentaje, 'g', 17)
-                                              : tr("e_a no se calcula en la primera iteración");
-            default: return QVariant();
+        if (!v.has_value()) {
+            return tr("no definido para este método");
         }
+        return QString::number(*v, 'g', 17);
     }
     return QVariant();
 }
