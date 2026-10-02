@@ -39,6 +39,7 @@ public:
     // saltan el formulario y lanzan el método con una entrada válida.
     Q_INVOKABLE void resolverPruebaBiseccion();
     Q_INVOKABLE void resolverPruebaNewton();
+    Q_INVOKABLE void resolverPruebaJacobi();
 
 private slots:
     void iniciarResolucion(const Entrada& entrada, const DescriptorMetodo& descriptor);
@@ -49,6 +50,10 @@ private slots:
                           const DescriptorMetodo& descriptor);
     void manejarIteracionSeleccionada(int k);
     void manejarMarcadorClickeado(int k);
+    // Reparte de nuevo el alto del panel izquierdo cuando el panel de entrada
+    // crece o mengua (aparece la rejilla del sistema o sube el número de
+    // ecuaciones). Un QSplitter solo reparte una vez, al construirse.
+    void ajustarAltoPanelEntrada();
 
 private:
     void construirInterfaz();
@@ -58,6 +63,8 @@ private:
     [[nodiscard]] QString valoresEnExtremos(const Entrada& entrada) const;
 
     PanelEntrada* panelEntrada_ = nullptr;
+    // Splitter vertical izquierdo: reparte el alto entre entrada y procedimiento.
+    QSplitter* divisionIzquierda_ = nullptr;
     GraficoBiseccion* grafico_ = nullptr;
     TablaIteraciones* tabla_ = nullptr;
     PanelProcedimiento* procedimiento_ = nullptr;
@@ -69,6 +76,10 @@ private:
     std::string ultimoFuncionTexto_;
     int ultimasCifras_ = 6;
     DescriptorMetodo ultimoDescriptor_;
+    // Último resultado mostrado. Se retiene (además de en la tabla) porque la
+    // narración de una iteración necesita el sistema completo cuando el método es
+    // de sistemas: con solo la fila no hay forma de escribir el despeje.
+    std::shared_ptr<const Resultado> ultimoResultado_;
     // Texto de f(x) tal como quedó tras el análisis (espacios normalizados):
     // lo usan el resumen, el panel procedimental y el re-análisis del gráfico.
     std::string ultimoTextoF_;

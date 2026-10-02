@@ -22,7 +22,12 @@ public:
 
     // Detalle aritmético de una iteración concreta. Los pasos narrativos
     // dependen del método: los 5 pasos obligatorios son de bisección, no de la app.
-    void mostrarIteracion(const Iteracion& iteracion, const std::string& funcionTexto,
+    //
+    // Recibe el Resultado entero, y no solo la Iteracion, porque la narrativa de
+    // un sistema necesita la matriz A y el vector b para escbir el desarrollo
+    // aritmético de cada ecuación: sin ellos solo podría repetir el resultado.
+    void mostrarIteracion(const Resultado& resultado, const Iteracion& iteracion,
+                          const std::string& funcionTexto,
                           int cifras, const DescriptorMetodo& descriptor);
 
     // Resumen final tras completar la resolución.
@@ -41,7 +46,18 @@ private:
     static QString aTexto(double valor, int cifras);
     [[nodiscard]] QString narrarBiseccion(const Iteracion&, const QString&, int) const;
     [[nodiscard]] QString narrarNewton(const Iteracion&, const QString&, int) const;
+    [[nodiscard]] QString narrarJacobi(const Resultado&, const Iteracion&, int) const;
     [[nodiscard]] static QString narrarMotivo(MotivoParada motivo);
+    // Rótulo de una variable del sistema: x₁, x₂, … x₁₀ en subíndice Unicode. Es lo
+    // que usan las subcolumnas de la tabla de iteraciones.
+    [[nodiscard]] static QString etiquetaVariable(int indice);
+    // Nombre de variable tal como lo escribe el enunciado: x, y, z… Es lo que
+    // usan las ecuaciones del sistema y el vector solución, que es donde una
+    // columna de coeficientes tiene que leerse «coeficiente de x» y no «x₁».
+    [[nodiscard]] static QString nombreVariable(int indice);
+    // «‖Δx‖₃» con el p que se usó, para que el rótulo de la tabla y la narración
+    // no tengan que suponer una norma fija.
+    [[nodiscard]] static QString etiquetaNorma(int p);
 };
 
 }  // namespace biseccion

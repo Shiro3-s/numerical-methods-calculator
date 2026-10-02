@@ -70,6 +70,7 @@ target_compile_options(qcustomplot PRIVATE -w)
 qt_add_executable(Biseccion
     src/main.cpp
     src/core/Biseccion.cpp
+    src/core/Jacobi.cpp
     src/core/Metodo.cpp
     src/core/NewtonRaphson.cpp
     src/core/Resultado.cpp
@@ -116,6 +117,7 @@ registrar_prueba(biseccion_tests
 registrar_prueba(metodo_tests
     tests/metodo_test.cpp
     src/core/Biseccion.cpp
+    src/core/Jacobi.cpp
     src/core/Metodo.cpp
     src/core/NewtonRaphson.cpp
     src/core/Resultado.cpp
@@ -128,6 +130,11 @@ registrar_prueba(newton_tests
     src/core/Resultado.cpp
     src/core/Funcion.cpp)
 
+registrar_prueba(jacobi_tests
+    tests/jacobi_test.cpp
+    src/core/Jacobi.cpp
+    src/core/Resultado.cpp)
+
 # ---------------- Pruebas de GUI (offscreen) ----------------
 # Dependen de Qt, así que van aparte de las de núcleo. Se ejecutan con
 # QT_QPA_PLATFORM=offscreen para no necesitar una sesión gráfica.
@@ -137,6 +144,7 @@ if(BUILD_GUI_TESTS)
     qt_add_executable(gui_tests tests/gui_test.cpp)
     target_sources(gui_tests PRIVATE
         src/core/Biseccion.cpp
+        src/core/Jacobi.cpp
         src/core/Metodo.cpp
         src/core/NewtonRaphson.cpp
         src/core/Resultado.cpp

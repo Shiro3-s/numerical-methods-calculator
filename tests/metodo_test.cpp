@@ -11,6 +11,7 @@
 #include <string>
 
 #include "core/Biseccion.hpp"
+#include "core/Jacobi.hpp"
 #include "core/Metodo.hpp"
 #include "core/Funcion.hpp"
 #include "core/NewtonRaphson.hpp"
@@ -44,18 +45,22 @@ void comprobar(bool condicion, const std::string& mensaje) {
 }  // namespace
 
 int main() {
-    // ---------- El catálogo trae ambos métodos, en orden y sin repetir ----
+    // ---------- El catálogo trae los tres métodos, en orden y sin repetir ----
     const auto metodos = catalogoMetodos();
-    comprobar(metodos.size() == 2, "El catálogo debe traer 2 métodos");
-    if (metodos.size() == 2) {
+    comprobar(metodos.size() == 3, "El catálogo debe traer 3 métodos");
+    if (metodos.size() == 3) {
         comprobar(metodos[0]->descriptor().clave == "biseccion",
                   "El primer método del selector es Bisección");
         comprobar(metodos[1]->descriptor().clave == "newton_raphson",
                   "El segundo método del selector es Newton-Raphson");
+        comprobar(metodos[2]->descriptor().clave == "jacobi",
+                  "El tercer método del selector es Jacobi");
     }
     comprobar(buscarMetodo("newton_raphson") != nullptr,
               "buscarMetodo debe encontrar newton_raphson");
-    comprobar(buscarMetodo("jacobi") == nullptr,
+    comprobar(buscarMetodo("jacobi") != nullptr,
+              "buscarMetodo debe encontrar jacobi");
+    comprobar(buscarMetodo("gauss_seidel") == nullptr,
               "buscarMetodo debe devolver nullptr para un método inexistente");
 
     // ---------- Descriptores: lo que la GUI necesita para configurarse ----
@@ -92,6 +97,39 @@ int main() {
         comprobar(newton->columnas.size() == 6, "Newton-Raphson define 6 columnas");
         comprobar(newton->etiquetaRaiz == "x",
                   "Newton-Raphson llama «x» al punto que aproxima");
+        comprobar(newton->requiereExpresion,
+                  "Newton-Raphson sí trabaja con una expresión escrita");
+    }
+
+    const std::optional<DescriptorMetodo> jacobi = descriptorDe("jacobi");
+    comprobar(jacobi.has_value(), "Debe existir el descriptor de Jacobi");
+    if (jacobi) {
+        comprobar(jacobi->tipo == TipoResolucion::Sistema,
+                  "Jacobi resuelve un sistema de ecuaciones");
+        comprobar(!jacobi->requiereExpresion,
+                  "Jacobi no pide f(x): un sistema es una matriz, no una expresión");
+        comprobar(!jacobi->requiereExpresionAuxiliar,
+                  "Jacobi no pide expresión auxiliar");
+        comprobar(!jacobi->muestraGrafico,
+                  "Un sistema no tiene curva que dibujar: el gráfico se oculta");
+        comprobar(!jacobi->muestraTrazado, "Jacobi no dibuja ninguna recta asociada");
+        comprobar(!jacobi->admiteEstimacionAbsoluta,
+                  "Jacobi no admite estimación absoluta (usa la norma del error)");
+        comprobar(jacobi->columnas.size() == 4,
+                  "Jacobi declara 4 columnas (una de ellas se expande en x₁…x_n)");
+        comprobar(jacobi->columnas[0].campo == CampoIteracion::K,
+                  "Jacobi empieza por k");
+        comprobar(jacobi->columnas[1].campo == CampoIteracion::VectorX,
+                  "La segunda columna de Jacobi es el vector, que la tabla expande");
+        comprobar(jacobi->columnas[2].campo == CampoIteracion::Norma,
+                  "Jacobi muestra ‖Δx‖ con el orden p que se eligió");
+        // El título va en genérico porque el descriptor NO conoce el p: lo elige
+        // el usuario en el panel de entrada. Poner «‖Δx‖∞» fijo mentiría en
+        // cuanto lo cambiara, así que la tabla lo reescribe con el p real.
+        comprobar(jacobi->columnas[2].titulo == "‖Δx‖p",
+                  "El descriptor declara la norma del error en genérico, sin fijar el orden");
+        comprobar(jacobi->columnas[3].campo == CampoIteracion::Ea,
+                  "Jacobi cierra con e_a");
     }
 
     // ---------- La fábrica construye métodos ya configurados -------------
@@ -138,6 +176,55 @@ int main() {
         const std::optional<DescriptorMetodo> descriptor = descriptorDe("biseccion");
         comprobar(descriptor.has_value() && crearDesdeEntrada(e, *descriptor) == nullptr,
                   "Una expresión inválida no debe producir un método");
+    }
+
+    // Jacobi se construye SIN analizar nada: no hay expresión que parsear. Si la
+    // fábrica exigiera una, el método sería inalcanzable desde la GUI.
+    {
+        Entrada e;
+        e.matriz = { { 2.0, 0.0 }, { 0.0, 4.0 } };
+        e.terminos = { 4.0, 8.0 };
+        e.dimension = 2;
+        e.cifras = 6;
+        const std::optional<DescriptorMetodo> descriptor = descriptorDe("jacobi");
+        comprobar(descriptor.has_value(), "Debe existir el descriptor de Jacobi");
+        auto metodo = descriptor ? crearDesdeEntrada(e, *descriptor) : nullptr;
+        comprobar(metodo != nullptr, "crearDesdeEntrada debe construir Jacobi sin expresión");
+        if (metodo) {
+            const auto porFactory = metodo->resolver(e);
+            comprobar(porFactory.has_value(), "El método de la fábrica debe resolver el sistema");
+            // La misma cuenta por la llamada numérica directa debe coincidir.
+            if (porFactory) {
+                const Jacobi directo;
+                const auto porDirecto = directo.resolver(e.matriz, e.terminos, e.vectorInicial,
+                                                         0.5 * std::pow(10.0, 2.0 - 6), 100);
+                comprobar(porDirecto.has_value(), "La llamada directa también debe resolver");
+                if (porDirecto) {
+                    comprobar(porDirecto->iteracionesUsadas() == porFactory->iteracionesUsadas(),
+                              "Ambas rutas deben hacer el mismo número de iteraciones");
+                    comprobar(porDirecto->solucion() == porFactory->solucion(),
+                              "Ambas rutas deben dar el mismo vector solución");
+                }
+            }
+        }
+    }
+
+    // Una forma inválida NO impide construir el método: se detecta al resolver, y
+    // se informa como DimensionInvalida en vez de como un fallo de construcción.
+    {
+        Entrada e;
+        e.matriz = { { 1.0, 0.0, 0.0 } };
+        e.terminos = { 1.0 };
+        e.dimension = 1;
+        e.cifras = 6;
+        const std::optional<DescriptorMetodo> descriptor = descriptorDe("jacobi");
+        auto metodo = descriptor ? crearDesdeEntrada(e, *descriptor) : nullptr;
+        comprobar(metodo != nullptr, "La forma del sistema no es cosa de la fábrica");
+        if (metodo) {
+            const auto r = metodo->resolver(e);
+            comprobar(!r.has_value() && r.error() == ErrorMetodo::DimensionInvalida,
+                      "Un sistema mal formado debe dar DimensionInvalida al resolver");
+        }
     }
 
     // ---------- resolver(Entrada) equivale a la llamada numérica ---------

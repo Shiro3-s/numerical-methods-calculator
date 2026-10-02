@@ -18,6 +18,7 @@
 #include "PanelProcedimiento.hpp"
 #include "TablaIteraciones.hpp"
 #include "core/CifrasSignificativas.hpp"
+#include "core/Jacobi.hpp"
 #include "core/NewtonRaphson.hpp"
 
 namespace biseccion {
@@ -36,6 +37,7 @@ void VentanaPrincipal::construirInterfaz() {
     auto* divisionPrincipal = new QSplitter(Qt::Horizontal, central);
     auto* panelIzquierdo = new QSplitter(Qt::Vertical, divisionPrincipal);
     auto* panelDerecho = new QSplitter(Qt::Vertical, divisionPrincipal);
+    divisionIzquierda_ = panelIzquierdo;
 
     // Panel 1 (entrada) y Panel 4 (procedimiento).
     panelEntrada_ = new PanelEntrada(panelIzquierdo);
@@ -71,6 +73,8 @@ void VentanaPrincipal::construirInterfaz() {
             this, &VentanaPrincipal::iniciarResolucion);
     connect(panelEntrada_, &PanelEntrada::cancelarSolicitado,
             this, &VentanaPrincipal::cancelarResolucion);
+    connect(panelEntrada_, &PanelEntrada::altoRequeridoCambiado,
+            this, &VentanaPrincipal::ajustarAltoPanelEntrada);
     connect(tabla_, &TablaIteraciones::iteracionSeleccionada,
             this, &VentanaPrincipal::manejarIteracionSeleccionada);
     connect(grafico_, &GraficoBiseccion::marcadorClickeado,
@@ -82,6 +86,10 @@ void VentanaPrincipal::construirInterfaz() {
 
 void VentanaPrincipal::cargarMetodos() {
     panelEntrada_->cargarMetodos();
+    // `cargarMetodos` ya emitió `altoRequeridoCambiado` al configurar el primer
+    // método, pero en ese momento el splitter todavía no tenía altura (la
+    // ventana se redimensiona después). Se repite ya con la geometría real.
+    ajustarAltoPanelEntrada();
 }
 void VentanaPrincipal::iniciarResolucion(const Entrada& entrada, const DescriptorMetodo& descriptor) {
     if (calculando_) {
@@ -90,11 +98,22 @@ void VentanaPrincipal::iniciarResolucion(const Entrada& entrada, const Descripto
 
     // Se analiza f(x) en este hilo (rápido, y permite informar del error con
     // posición y carácter), pero la ITERACIÓN va en segundo plano.
-    auto analisisF = parsearFuncion(entrada.expresion);
-    if (!analisisF) {
-        mostrarErrorAnalisis(analisisF.error().mensaje,
-                             tr("Revise la expresión f(x) e inténtelo de nuevo."));
-        return;
+    //
+    // Un método de sistema no tiene expresión: su descriptor pone
+    // requiereExpresion a false. Analizar aquí "" produciría siempre un fallo de
+    // análisis, así que el parseo se salta entera para esos métodos.
+    std::string funcionTexto;
+    if (descriptor.requiereExpresion) {
+        auto analisisF = parsearFuncion(entrada.expresion);
+        if (!analisisF) {
+            mostrarErrorAnalisis(analisisF.error().mensaje,
+                                 tr("Revise la expresión f(x) e inténtelo de nuevo."));
+            return;
+        }
+        funcionTexto = analisisF->texto;
+    } else {
+        const int n = entrada.matriz.empty() ? 3 : static_cast<int>(entrada.matriz.size());
+        funcionTexto = QStringLiteral("sistema lineal %1×%1").arg(n).toStdString();
     }
     if (descriptor.requiereExpresionAuxiliar) {
         if (entrada.expresionAuxiliar.empty()) {
@@ -113,6 +132,10 @@ void VentanaPrincipal::iniciarResolucion(const Entrada& entrada, const Descripto
         }
     }
 
+    // El texto que se mostrará en el resumen. Para los métodos de raíz es la
+    // expresión normalizada por el parser; para un sistema, una etiqueta legible.
+    ultimoTextoF_ = funcionTexto;
+
     // Construcción tipada: cada método configura sus propios evaluadores.
     auto algoritmo = crearDesdeEntrada(entrada, descriptor);
     if (!algoritmo) {
@@ -120,8 +143,6 @@ void VentanaPrincipal::iniciarResolucion(const Entrada& entrada, const Descripto
         return;
     }
 
-    const std::string funcionTexto = analisisF->texto;
-    ultimoTextoF_ = funcionTexto;
     const int n = std::clamp(entrada.cifras, 1, 12);
     ultimasCifrasPendientes_ = n;
 
@@ -229,7 +250,12 @@ void VentanaPrincipal::aplicarResultado(const std::shared_ptr<Resultado>& result
                 html += tr("<p>Alguna de las expresiones no se pudo analizar.</p>");
                 break;
             case ErrorMetodo::DimensionInvalida:
-                html += tr("<p>El sistema no tiene dimensiones coherentes.</p>");
+                html += tr("<p>El sistema no tiene una forma válida: la matriz debe ser "
+                           "cuadrada (n × n), el vector de términos independientes "
+                           "debe tener n componentes y no puede haber valores en blanco.</p>");
+                html += tr("<p>Sistema recibido: %1 ecuaciones, %2 términos.</p>")
+                            .arg(entrada.matriz.size())
+                            .arg(entrada.terminos.size());
                 break;
         }
         procedimiento_->mostrarInformacion(html);
@@ -242,6 +268,10 @@ void VentanaPrincipal::aplicarResultado(const std::shared_ptr<Resultado>& result
     ultimoFuncionTexto_ = funcionTexto;
     ultimasCifras_ = cifras;
     ultimoDescriptor_ = descriptor;
+    // El panel de procedimiento narra la iteración seleccionada, y en el caso de
+    // un sistema necesita A y b para escbir el desarrollo aritmético. Guardar el
+    // resultado aquí (y no solo en la tabla) es lo que se lo permite.
+    ultimoResultado_ = resultado;
 
     modelo_->setResultado(*resultado, descriptor, cifras);
 
@@ -281,15 +311,36 @@ void VentanaPrincipal::aplicarResultado(const std::shared_ptr<Resultado>& result
 }
 
 void VentanaPrincipal::manejarIteracionSeleccionada(int k) {
+    if (!ultimoResultado_) {
+        return;
+    }
     if (const Iteracion* iteracion = modelo_->iteracionPorK(k)) {
         grafico_->resaltarIteracion(k);
-        procedimiento_->mostrarIteracion(*iteracion, ultimoFuncionTexto_, ultimasCifras_,
-                                      ultimoDescriptor_);
+        procedimiento_->mostrarIteracion(*ultimoResultado_, *iteracion, ultimoFuncionTexto_,
+                                          ultimasCifras_, ultimoDescriptor_);
     }
 }
 
 void VentanaPrincipal::manejarMarcadorClickeado(int k) {
     tabla_->seleccionarIteracion(k);
+}
+
+void VentanaPrincipal::ajustarAltoPanelEntrada() {
+    if (!divisionIzquierda_ || !panelEntrada_) {
+        return;
+    }
+    // Cuánto alto pide el panel ahora mismo…
+    const int pedido = panelEntrada_->sizeHint().height();
+    // …acotado por lo que cabe en el splitter, dejando siempre sitio al panel
+    // de procedimiento para que no quede una franja inútil.
+    const int minProcedimiento =
+        std::max(120, procedimiento_ ? procedimiento_->minimumSizeHint().height() : 120);
+    const int disponible = divisionIzquierda_->height() - minProcedimiento;
+    if (disponible <= 0) {
+        return;  // la ventana es demasiado baja: el splitter ya hace lo que puede
+    }
+    const int alto = std::clamp(pedido, 0, disponible);
+    divisionIzquierda_->setSizes({alto, divisionIzquierda_->height() - alto});
 }
 
 // Puntos de entrada para las pruebas y para el autotest por consola: disparan
@@ -313,6 +364,27 @@ void VentanaPrincipal::resolverPruebaNewton() {
     e.cifras = 6;
     const NewtonRaphson n(std::function<double(double)>{}, std::function<double(double)>{});
     iniciarResolucion(e, n.descriptor());
+}
+
+// Sistema de la autocomprobación: el mismo 3×3 del enunciado que viene precargado
+// en el panel, para que la prueba de la GUI y la del núcleo midan lo mismo. Se
+// escribe en el orden del enunciado —con solo la fila 2 dominante— porque así el
+// paso 1 del procedimiento tiene algo que reordenar y la prueba puede comprobar
+// que el intercambio ocurre de verdad.
+void VentanaPrincipal::resolverPruebaJacobi() {
+    Entrada e;
+    e.matriz = {
+        { 1.0, 1.0, 4.0 },
+        { -2.0, 4.0, 1.0 },
+        { 6.0, 3.0, -2.0 },
+    };
+    e.terminos = { 15.0, 9.0, 6.0 };
+    e.dimension = 3;
+    e.vectorInicial = { 0.0, 0.0, 1.0 };
+    e.cifras = 6;
+    e.normaP = 3;
+    const Jacobi j;
+    iniciarResolucion(e, j.descriptor());
 }
 
 }  // namespace biseccion

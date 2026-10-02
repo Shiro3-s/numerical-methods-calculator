@@ -39,6 +39,12 @@ struct DescriptorMetodo {
     // Lo usan la tabla, el gráfico y el resumen para no asumir «m».
     std::string etiquetaRaiz = "m";
 
+    // Si false, el método no trabaja con una expresión que el usuario escriba:
+    // no habrá que analizarla antes de resolver. Un sistema lineal se teclea como
+    // matriz, no como f(x), así que su descriptor lo pone a false y la GUI se
+    // ahorra un parseo que fallaría siempre con la entrada vacía.
+    bool requiereExpresion = true;
+
     // Si false, la GUI ocultará el gráfico y el split se reajustará.
     bool muestraGrafico = true;
 
@@ -68,10 +74,24 @@ struct Entrada {
     // Cifras significativas
     int cifras = 6;
 
-    // Sistema lineal (Sistema) — futuro.
+    // Sistema lineal (TipoResolucion::Sistema).
+    //
+    // `matriz` es A (n×n) y `terminos` es b (n). `dimension` es redundante con
+    // matriz.size(), y se mantiene a propósito como COMPROBACIÓN: si la GUI
+    // declara una dimensión que no cuadra con la matriz, el método lo rechaza en
+    // vez de resolver de más o de menos filas.
     std::vector<std::vector<double>> matriz;
     std::vector<double> terminos;
     int dimension = 0;
+    // Iterada inicial x⁽⁰⁾. Vacía = empezar en el vector nulo.
+    std::vector<double> vectorInicial;
+    // Orden p de la norma con la que se mide el error del sistema:
+    // ‖v‖_p = (Σ |vᵢ|^p)^(1/p). El enunciado trabaja con p = 3 («3 NORMA
+    // P=3»); aquí es configurable y la GUI lo expone en un campo propio, que es
+    // el punto donde queda DEFINIDO el p que luego usa todo el cálculo. Solo lo
+    // leen los métodos de sistema: en una raíz hay una sola componente y todas
+    // las normas dan el mismo valor absoluto.
+    int normaP = 3;
 };
 
 class MetodoNumerico {
